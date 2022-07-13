@@ -13,9 +13,6 @@
 #include <ctype.h>
 #include <limits.h>
 
-#define FILENAME_SIZE 13
-#define CHR_ID_LEN 4
-
 bool char_ptr_compare(char *ptr1, char *ptr2, char ptr_len);
 bool short_ptr_compare(short *ptr1, short *ptr2, short ptr_len);
 char *get_next_str(FILE *fp);
@@ -48,9 +45,6 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		char cwd[PATH_MAX];
-		getcwd(cwd, sizeof(cwd));
-		char input[1];
 		// check for yabber directory
 		char *yabber_path = get_next_str(fp);
 		char *yabber_dcx_path = (char *) calloc(strlen(yabber_path) + strlen("\\Yabber.DCX.exe"), sizeof(char));
