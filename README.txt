@@ -1,5 +1,6 @@
 | Mimic Tear v1.0.0
-| Author: Gomp
+| Author: GompDS
+| https://github.com/GompDS/Mimic-Tear
 
 Requires Yabber by TKPG in order to function.
 Download Yabber: https://www.nexusmods.com/sekiro/mods/42
