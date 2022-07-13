@@ -7,7 +7,7 @@ Requires Yabber by TKPG in order to function.
 Download Yabber: https://www.nexusmods.com/sekiro/mods/42
                  https://github.com/JKAnderson/Yabber
 
-This is a subspecies creation tool for Dark Souls 3 which automates the process of creating a subspecies of an enemy.
+This is a tool for Dark Souls 3 which automates the process of creating a subspecies of an enemy.
 
 --| How to use
 
