@@ -1,9 +1,7 @@
 /*
-	Do next: unicode hex edit is finished. Need to add editor encoding hex edit
-	Unicode format: 31 00 31 00 37 00 31 00
-	Editor format:  31 31 37 31 (only used for behbnd)
+	Mimic Tear v.1.0.0
+	Author: GompDS
 */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
