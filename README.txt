@@ -1,5 +1,5 @@
 | Mimic Tear v1.0.0
-| Author: GompDS
+| Author: Gomp
 | https://github.com/GompDS/Mimic-Tear
 | @Gomp in ?ServerName? if you find any bugs or have questions
 
