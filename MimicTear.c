@@ -1,6 +1,6 @@
 /*
-	Mimic Tear v.1.0.0
-	Author: GompDS
+	Mimic Tear v.1.1.0
+	Author: Gomp
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,18 +12,20 @@
 #include <sys/stat.h>
 #include <ctype.h>
 #include <limits.h>
+#include <stdint.h>
+#include <stdint.h>
 
-bool char_ptr_compare(char *ptr1, char *ptr2, char ptr_len);
-bool short_ptr_compare(short *ptr1, short *ptr2, short ptr_len);
+bool int8_ptr_compare(int8_t *ptr1, int8_t *ptr2, int ptr_len);
+bool short_ptr_compare(short *ptr1, short *ptr2, int ptr_len);
 char *get_next_str(FILE *fp);
 int get_next_int(FILE *fp);
 void copy_binary(char *src_path, char *dest_path);
 void copy_bnd(char *suffix, char *src_path, char *old_id, char *new_id);
-void copy_fdp(char *suffix, char *src_path, char *old_id, char *new_id);
+void copy_fdp(char *suffix, char *src_path, char *old_id, char *new_id, int game);
 void replace_1_byte_binary(char *src_path, char *find, char *replace);
 void replace_2_byte_binary(char *src_path, char *find, char *replace);
 int find_1_byte_binary(char *src_path, char *find);
-char *str_to_char(char *str);
+int8_t *str_to_int8(char *str);
 short *str_to_short(char *str);
 void rn_dir_tree(const char *dir_path, const char* find, const char* replace);
 void rn_unpacked_files(const char *bnd_type, const char *old_id, const char *new_id);
@@ -31,6 +33,8 @@ void unpack_bnd(const char *bnd_type, const char *id, const char *yabber_path);
 void repack_bnd(const char *bnd_type, const char *id, const char *yabber_path);
 void recomp_bnd(const char *bnd_type, const char *id, const char *yabber_path);
 void output_file(char *src, char **outputs, int num_outs, char *path_ext);
+void edit_sekiro_fev(const char *old_id, const char *new_id);
+void question(void);
 
 int main(int argc, char *argv[])
 {
@@ -107,6 +111,27 @@ int main(int argc, char *argv[])
 				return -1;
 			}
 			num_outs++;
+		}
+		// get game
+		int game = get_next_int(fp);
+		if(game < 0 || game > 1)
+		{
+			fprintf(stderr, "%s: \"%d\"\n", "Specified game is unknown", game);
+			getchar();
+			return -1;
+		}
+		// check if game exists in game path
+		if(strstr(game_path, "DARK SOULS III") == NULL && game == 0)
+		{
+			fprintf(stderr, "The game directory \"%s\" does not match the game setting.\nContinuing could result in incorrect behavior.\n", game_path);
+			question();
+			getchar();
+		}
+		if(strstr(game_path, "Sekiro") == NULL && game == 1)
+		{
+			fprintf(stderr, "The game directory \"%s\" does not match the game setting.\nContinuing could result in incorrect behavior.\n", game_path);
+			question();
+			getchar();
 		}
 		// get old id
 		char *old_id = get_next_str(fp);
@@ -213,41 +238,88 @@ int main(int argc, char *argv[])
 		}
 		if(setting[5])
 		{
-			copy_fdp("fev", game_path, old_id, new_id);
-			char *path = (char *) calloc(strlen("fdp_cxxxx.fev"), sizeof(char));
-			sprintf(path, "fdp_c%s.fev", new_id);
-			char *find = (char *) calloc(strlen("fdp_cxxxx"), sizeof(char));
-			sprintf(find, "fdp_c%s", old_id);
-			char *replace = (char *) calloc(strlen("fdp_cxxxx"), sizeof(char));
-			sprintf(replace, "fdp_c%s", new_id);
-			replace_1_byte_binary(path, find, replace);
-			if(*(old_id + 3) != '0')
+			if(game >= 0 && game <= 1)
 			{
-				char *rev_old_id = (char *) calloc(strlen(old_id), sizeof(char));
-				strcpy(rev_old_id, old_id);
-				*(rev_old_id + 3) = '0';
-				sprintf(find, "fdp_c%s", rev_old_id);
-				replace_1_byte_binary(path, find, replace);
+				copy_fdp("fev", game_path, old_id, new_id, game);
+				char *path;
+				char *find;
+				char *replace;
+				// if ds3
+				if(game == 0)
+				{
+					path = (char *) calloc(strlen("fdp_cxxxx.fev"), sizeof(char));
+					sprintf(path, "fdp_c%s.fev", new_id);
+					find = (char *) calloc(strlen("fdp_cxxxx"), sizeof(char));
+					sprintf(find, "fdp_c%s", old_id);
+					replace = (char *) calloc(strlen("fdp_cxxxx"), sizeof(char));
+					sprintf(replace, "fdp_c%s", new_id);
+					replace_1_byte_binary(path, find, replace);
+				}
+				// if sekiro
+				else
+				{
+					path = (char *) calloc(strlen("cxxxx.fev"), sizeof(char));
+					sprintf(path, "c%s.fev", new_id);
+					edit_sekiro_fev(old_id, new_id);
+				}
+				if(*(old_id + 3) != '0')
+				{
+					char *rev_old_id = (char *) calloc(strlen(old_id), sizeof(char));
+					strcpy(rev_old_id, old_id);
+					*(rev_old_id + 3) = '0';
+					// if ds3
+					if(game == 0)	
+					{
+						sprintf(find, "fdp_c%s", rev_old_id);
+						replace_1_byte_binary(path, find, replace);
+					}
+					// if sekiro
+					else
+					{
+						edit_sekiro_fev(rev_old_id, new_id);
+					}
+				}
+				// output fev
+				char *src;
+				if(game == 0)
+				{
+					src = (char *) calloc(strlen("fdp_cxxxx.fev"), sizeof(char));
+					sprintf(src, "fdp_c%s.fev", new_id);
+				}
+				else
+				{
+					src = (char *) calloc(strlen("cxxxx.fev"), sizeof(char));
+					sprintf(src, "c%s.fev", new_id);
+				}
+				output_file(src, out_path, num_outs, "\\sound\\");
 			}
-			// output fev
-			char *src = (char *) calloc(strlen("fdp_cxxxx.fev"), sizeof(char));
-			sprintf(src, "fdp_c%s.fev", new_id);
-			output_file(src, out_path, num_outs, "\\sound\\");
 		}
 		if(setting[6])
 		{
-			copy_fdp("fsb", game_path, old_id, new_id);
-			// output fsb
-			char *src = (char *) calloc(strlen("fdp_cxxxx.fsb"), sizeof(char));
-			sprintf(src, "fdp_c%s.fsb", new_id);
-			output_file(src, out_path, num_outs, "\\sound\\");
+			if(game >= 0 && game <= 1)
+			{
+				copy_fdp("fsb", game_path, old_id, new_id, game);
+				// output fsb
+				char *src;
+				if(game == 0)
+				{			
+					src = (char *) calloc(strlen("fdp_cxxxx.fsb"), sizeof(char));
+					sprintf(src, "fdp_c%s.fsb", new_id);
+				}
+				else
+				{
+					src = (char *) calloc(strlen("cxxxx.fsb"), sizeof(char));
+					sprintf(src, "c%s.fsb", new_id);
+				}
+				output_file(src, out_path, num_outs, "\\sound\\");
+			}
 		}
 	}
 	fclose(fp);
 	return 0;
 }
 
-bool char_ptr_compare(char *ptr1, char *ptr2, char ptr_len)
+bool int8_ptr_compare(int8_t *ptr1, int8_t *ptr2, int ptr_len)
 {
 	int i = 0;
 	while(*(ptr1 + i) == *(ptr2 + i))
@@ -264,7 +336,7 @@ bool char_ptr_compare(char *ptr1, char *ptr2, char ptr_len)
 	}
 }
 
-bool short_ptr_compare(short *ptr1, short *ptr2, short ptr_len)
+bool short_ptr_compare(short *ptr1, short *ptr2, int ptr_len)
 {
 	int i = 0;
 	while(*(ptr1 + i) == *(ptr2 + i))
@@ -354,10 +426,21 @@ void copy_bnd(char *suffix, char *src_path, char *old_id, char *new_id)
 	copy_binary(bnd_src, bnd_dest);
 }
 
-void copy_fdp(char *suffix, char *src_path, char *old_id, char *new_id)
+void copy_fdp(char *suffix, char *src_path, char *old_id, char *new_id, int game)
 {
-	char *fdp_src = (char *) calloc(strlen(src_path) + strlen("\\sound\\fdp_cxxxx.xxx"), sizeof(char));
-	sprintf(fdp_src, "%s\\sound\\fdp_c%s.%s", src_path, old_id, suffix);
+	char *fdp_src;
+	// if ds3
+	if(game == 0)
+	{
+		fdp_src = (char *) calloc(strlen(src_path) + strlen("\\sound\\fdp_cxxxx.xxx"), sizeof(char));
+		sprintf(fdp_src, "%s\\sound\\fdp_c%s.%s", src_path, old_id, suffix);
+	}
+	// if sekiro
+	else if(game == 1)
+	{
+		fdp_src = (char *) calloc(strlen(src_path) + strlen("\\sound\\cxxxx.xxx"), sizeof(char));
+		sprintf(fdp_src, "%s\\sound\\c%s.%s", src_path, old_id, suffix);
+	}
 	if(access(fdp_src, F_OK) == -1)
 	{
 		fprintf(stderr, "%s: %s\n", "No such file or directory", fdp_src);
@@ -370,15 +453,37 @@ void copy_fdp(char *suffix, char *src_path, char *old_id, char *new_id)
 		char *rev_old_id = (char *) calloc(strlen(old_id), sizeof(char));
 		strcpy(rev_old_id, old_id);
 		*(rev_old_id + 3) = '0';
-		sprintf(fdp_src, "%s\\sound\\fdp_c%s.%s", src_path, rev_old_id, suffix);
+		// if ds3
+		if(game == 0)
+		{
+			fdp_src = (char *) calloc(strlen(src_path) + strlen("\\sound\\fdp_cxxxx.xxx"), sizeof(char));
+			sprintf(fdp_src, "%s\\sound\\fdp_c%s.%s", src_path, rev_old_id, suffix);
+		}
+		// if sekiro
+		else if(game == 1)
+		{
+			fdp_src = (char *) calloc(strlen(src_path) + strlen("\\sound\\cxxxx.xxx"), sizeof(char));
+			sprintf(fdp_src, "%s\\sound\\c%s.%s", src_path, rev_old_id, suffix);
+		}
 		if(access(fdp_src, F_OK) == -1)
 		{
 			perror(fdp_src);
 			exit(-1);
 		}
 	}
-	char *fdp_dest = (char *) calloc(strlen("fdp_cxxxx.xxx"), sizeof(char));
-	sprintf(fdp_dest, "fdp_c%s.%s", new_id, suffix);
+	char *fdp_dest;
+	// if ds3
+	if(game == 0)
+	{
+		fdp_dest = (char *) calloc(strlen("fdp_cxxxx.xxx"), sizeof(char));
+		sprintf(fdp_dest, "fdp_c%s.%s", new_id, suffix);
+	}
+	// if sekiro
+	else if(game == 1)
+	{
+		fdp_dest = (char *) calloc(strlen("cxxxx.xxx"), sizeof(char));
+		sprintf(fdp_dest, "c%s.%s", new_id, suffix);
+	}
 	copy_binary(fdp_src, fdp_dest);
 }
 
@@ -394,28 +499,38 @@ void replace_1_byte_binary(char *src_path, char *find, char *replace)
 	{
 		exit(-1);
 	}
-	char *buffer = (char *) calloc(strlen(find), sizeof(char));
-	char *to_find = str_to_char(find);
-	char *to_replace = str_to_char(replace);
-	
+	int8_t *buffer = (int8_t *) calloc(strlen(find), sizeof(int8_t));
+	int8_t *to_find = str_to_int8(find);
+	int8_t *to_replace = str_to_int8(replace);
+	int max_offset = 0;
+	fseek(src, 0L, SEEK_END);
+	max_offset = ftell(src);
+	fseek(src, 0L, SEEK_SET);
 	size_t elements_read = fread(buffer, sizeof(*buffer), 1, src);
 	int offset = 0;
 	while(elements_read > 0)
 	{
-		offset += sizeof(char);
+		offset += sizeof(int8_t);
 		if(*buffer == *to_find)
 		{
-			elements_read = fread(buffer + 1, sizeof(*buffer), strlen(find) - 1, src);
-			offset += (elements_read * sizeof(char));			
+			if((offset + ((strlen(find) - 1) * sizeof(int8_t))) >= max_offset)
+			{
+				elements_read = 0;
+			}
+			else
+			{
+				elements_read = fread(buffer + 1, sizeof(*buffer), strlen(find) - 1, src);
+				offset += (elements_read * sizeof(int8_t));
+			}
 			if(elements_read == strlen(find) - 1)
 			{
-				if(char_ptr_compare(buffer, to_find, strlen(find)))
+				if(int8_ptr_compare(buffer, to_find, strlen(find)))
 				{
 					fwrite(to_replace, sizeof(*buffer), strlen(find), dest);
 				}
 				else
 				{
-					offset -= (elements_read * sizeof(char));
+					offset -= (elements_read * sizeof(int8_t));
 					fseek(src, offset, SEEK_SET); 
 					fwrite(buffer, sizeof(*buffer), 1, dest);
 				}
@@ -452,7 +567,10 @@ void replace_2_byte_binary(char *src_path, char *find, char *replace)
 	short *buffer = (short *) calloc(strlen(find), sizeof(short));
 	short *to_find = str_to_short(find);
 	short *to_replace = str_to_short(replace);
-	
+	int max_offset = 0;
+	fseek(src, 0L, SEEK_END);
+	max_offset = ftell(src);
+	fseek(src, 0L, SEEK_SET);
 	size_t elements_read = fread(buffer, sizeof(*buffer), 1, src);
 	int offset = 0;
 	while(elements_read > 0)
@@ -460,8 +578,15 @@ void replace_2_byte_binary(char *src_path, char *find, char *replace)
 		offset += sizeof(short);
 		if(*buffer == *to_find)
 		{
-			elements_read = fread(buffer + 1, sizeof(*buffer), strlen(find) - 1, src);
-			offset += (elements_read * sizeof(short));
+			if((offset + ((strlen(find) - 1) * sizeof(short))) >= max_offset)
+			{
+				elements_read = 0;
+			}
+			else
+			{
+				elements_read = fread(buffer + 1, sizeof(*buffer), strlen(find) - 1, src);
+				offset += (elements_read * sizeof(short));
+			}
 			if(elements_read == strlen(find) - 1)
 			{
 				if(short_ptr_compare(buffer, to_find, strlen(find)))
@@ -499,8 +624,8 @@ int find_1_byte_binary(char *src_path, char *find)
 	{
 		return 1;
 	}
-	char *buffer = (char *) calloc(strlen(find), sizeof(char));
-	char *to_find = str_to_char(find);
+	int8_t *buffer = (int8_t *) calloc(strlen(find), sizeof(int8_t));
+	int8_t *to_find = str_to_int8(find);
 	int i = 0;
 	while(i < 4)
 	{
@@ -516,7 +641,7 @@ int find_1_byte_binary(char *src_path, char *find)
 			elements_read = fread(buffer + 1, sizeof(*buffer), strlen(find) - 1, src);
 			if(elements_read == strlen(find) - 1)
 			{
-				if(char_ptr_compare(buffer, to_find, strlen(find)))
+				if(int8_ptr_compare(buffer, to_find, strlen(find)))
 				{
 					return 0;
 				}
@@ -528,14 +653,15 @@ int find_1_byte_binary(char *src_path, char *find)
 	return 1;
 }
 
-char *str_to_char(char *str)
+int8_t *str_to_int8(char *str)
 {
-	char *hex = calloc(strlen(str), sizeof(char));
+	int8_t *hex = calloc(strlen(str), sizeof(int8_t));
 	for(int i = 0; i < strlen(str); i++)
 	{
 		char c = *(str + i);
 		if(c != '\0')
 		{
+			if(c == '.') c = 0;
 			*(hex + i) = c;
 		}
 	}
@@ -548,6 +674,7 @@ short *str_to_short(char *str)
 	for(int i = 0; i < strlen(str); i++)
 	{
 		char c = *(str + i);
+		if(c == '.') c = 0;
 		*(hex + i) = c;
 	}
 	return hex;
@@ -598,9 +725,9 @@ void rn_dir_tree(const char *dir_path, const char* find, const char* replace)
 		// rename entry
 		char *new_path = calloc(strlen(full_path) + 1, sizeof(char));
 		strcpy(new_path, full_path);
-		memcpy(new_path + strlen(dir_path) + 1, replace, 5);
+		memcpy(strstr(strstr(new_path, entry->d_name), find), replace, 5);
 	  rename(full_path, new_path);
-		printf("Renamed %s\n", full_path);
+		printf("Renamed %s to %s\n", full_path, new_path);
 	}
 	closedir (dir);
 }
@@ -680,4 +807,48 @@ void output_file(char *src, char **outputs, int num_outs, char *path_ext)
 		printf("Output %s to %s\n", src, dest);
 	}
 	remove(src);
+}
+
+void edit_sekiro_fev(const char *old_id, const char *new_id)
+{
+	char *path = (char *) calloc(strlen("cxxxx.fev") + 1, sizeof(char));
+	sprintf(path, "c%s.fev", new_id);
+	
+	char *find = (char *) calloc(strlen("./cxxxx") + 1, sizeof(char));
+	sprintf(find, "./c%s", old_id);
+	char *replace = (char *) calloc(strlen("./cxxxx") + 1, sizeof(char));
+	sprintf(replace, "./c%s", new_id);
+	replace_1_byte_binary(path, find, replace);
+				
+	find = (char *) calloc(strlen(".cxxxx.") + 1, sizeof(char));
+	sprintf(find, ".c%s.", old_id);
+	replace = (char *) calloc(strlen(".cxxxx.") + 1, sizeof(char));
+	sprintf(replace, ".c%s.", new_id);
+	replace_1_byte_binary(path, find, replace);
+				
+	find = (char *) calloc(strlen("bank/cxxxx") + 1, sizeof(char));
+	sprintf(find, "bank/c%s", old_id);
+	replace = (char *) calloc(strlen("bank/cxxxx") + 1, sizeof(char));
+	sprintf(replace, "bank/c%s", new_id);
+	replace_1_byte_binary(path, find, replace);
+}
+
+void question(void)
+{
+	char option;
+
+	printf("%s\n", "Are you sure you want to continue? [y/n]");
+	scanf("%c", &option);
+
+  if (option == 'n' || option == 'N')
+  {
+    exit(-1);
+  }
+  else if(option !=  'y' && option != 'Y')
+  {
+    printf("Invalid selection.\n");
+		getchar();
+    question();
+  }
+	
 }
