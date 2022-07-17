@@ -18,3 +18,5 @@ Enter the required information into config.ini, select game, select conversion s
 This has only been tested on Windows, so it probably won't work only other systems.
 
 The path to this folder cannot contain any spaces or else MimicTear.exe will not function correctly.
+
+For Sekiro enemies, copying the mtd is not required for the subspecies to have unique textures.

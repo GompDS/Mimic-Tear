@@ -28,12 +28,16 @@ int find_1_byte_binary(char *src_path, char *find);
 int8_t *str_to_int8(char *str);
 short *str_to_short(char *str);
 void rn_dir_tree(const char *dir_path, const char* find, const char* replace);
+void copy_chr_mtds(const char *dir_path, const char* find, const char* replace);
 void rn_unpacked_files(const char *bnd_type, const char *old_id, const char *new_id);
 void unpack_bnd(const char *bnd_type, const char *id, const char *yabber_path);
+void unpack_mtd(const char *bnd_name, const char *yabber_path);
 void repack_bnd(const char *bnd_type, const char *id, const char *yabber_path);
+void repack_mtd(const char *bnd_name, const char *yabber_path);
 void recomp_bnd(const char *bnd_type, const char *id, const char *yabber_path);
 void output_file(char *src, char **outputs, int num_outs, char *path_ext);
 void edit_sekiro_fev(const char *old_id, const char *new_id);
+void add_xml_entry(const char *xml_path, const char *path);
 void question(void);
 
 int main(int argc, char *argv[])
@@ -150,8 +154,8 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 		// get conversion settings
-		int setting[7] = {0};
-		for(int i = 0; i < 7; i++)
+		int setting[8] = {0};
+		for(int i = 0; i < 8; i++)
 		{
 			int value = get_next_int(fp);
 			if(value == -1) return ENOMEM;
@@ -196,11 +200,26 @@ int main(int argc, char *argv[])
 			// hex edit texture paths in flver
 			char *flver_path = calloc(strlen("cxxxx-chrbnd-dcx\\chr\\cxxxx\\cxxxx.flver") + 1, sizeof(char));
 			sprintf(flver_path, "c%s-chrbnd-dcx\\chr\\c%s\\c%s.flver", new_id, new_id, new_id);
-			char *find = calloc(strlen("\\Model\\chr\\cxxxx\\tex\\") + 1, sizeof(char));
-			sprintf(find, "\\Model\\chr\\c%s\\tex\\", old_id);
-			char *replace = calloc(strlen("\\Model\\chr\\cxxxx\\tex\\") + 1, sizeof(char));
-			sprintf(replace, "\\Model\\chr\\c%s\\tex\\", new_id);
-			replace_2_byte_binary(flver_path, find, replace);
+			char *find;
+			char *replace;
+			// if ds3
+			if(game == 0)
+			{
+				find = calloc(strlen("\\Model\\chr\\cxxxx\\tex\\") + 1, sizeof(char));
+				sprintf(find, "\\Model\\chr\\c%s\\tex\\", old_id);
+				replace = calloc(strlen("\\Model\\chr\\cxxxx\\tex\\") + 1, sizeof(char));
+				sprintf(replace, "\\Model\\chr\\c%s\\tex\\", new_id);
+				replace_2_byte_binary(flver_path, find, replace);
+			}
+			// if sekiro
+			else if(game == 1 && setting[7])
+			{
+				find = calloc(strlen("\\Material\\mtd\\character\\cxxxx") + 1, sizeof(char));
+				sprintf(find, "\\Material\\mtd\\character\\c%s", old_id);
+				replace = calloc(strlen("\\Material\\mtd\\character\\cxxxx") + 1, sizeof(char));
+				sprintf(replace, "\\Material\\mtd\\character\\c%s", new_id);
+				replace_2_byte_binary(flver_path, find, replace);
+			}
 			repack_bnd("chr", new_id, yabber_exe_path);
 			// output chrbnd
 			char *src = (char *) calloc(strlen("cxxxx.chrbnd.dcx"), sizeof(char));
@@ -312,6 +331,28 @@ int main(int argc, char *argv[])
 					sprintf(src, "c%s.fsb", new_id);
 				}
 				output_file(src, out_path, num_outs, "\\sound\\");
+			}
+		}
+		if(setting[7])
+		{
+			// if Sekiro
+			if(game == 1)
+			{
+				// copy allmaterialmtd
+				char *path = (char *) calloc(strlen(game_path) + strlen("\\mtd\\allmaterialbnd.mtdbnd.dcx") + 1, sizeof(char));
+				sprintf(path, "%s%s", game_path, "\\mtd\\allmaterialbnd.mtdbnd.dcx");
+				char *dest = (char *) calloc(strlen("allmaterialbnd.mtdbnd.dcx") + 1, sizeof(char));
+				sprintf(dest, "%s", "allmaterialbnd.mtdbnd.dcx");
+				copy_binary(path, dest);
+				unpack_mtd("allmaterialbnd", yabber_exe_path);
+				char *find = (char *) calloc(strlen("cxxxx"), sizeof(char));
+				sprintf(find, "c%s", old_id);
+				char *replace = (char *) calloc(strlen("cxxxx"), sizeof(char));
+				sprintf(replace, "c%s", new_id);
+				copy_chr_mtds("allmaterialbnd-mtdbnd-dcx", find, replace);
+				repack_mtd("allmaterialbnd", yabber_exe_path);
+				char *src = "allmaterialbnd.mtdbnd.dcx";
+				output_file(src, out_path, num_outs, "\\mtd\\");
 			}
 		}
 	}
@@ -732,6 +773,68 @@ void rn_dir_tree(const char *dir_path, const char* find, const char* replace)
 	closedir (dir);
 }
 
+void copy_chr_mtds(const char *dir_path, const char* old_id, const char* new_id)
+{
+	char *full_path;
+	DIR *dir;
+	struct stat stat_path, stat_entry;
+	struct dirent *entry;
+	// stat for path
+	stat(dir_path, &stat_path);
+
+	if ((dir = opendir(dir_path)) == NULL)
+	{
+		fprintf(stderr, "%s: %s\n", "Can't open directory", dir_path);
+		exit(-1);
+	}
+
+	while((entry = readdir(dir)) != NULL) 
+	{
+		if(!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+		{
+      continue;
+		}
+		// get full path of entry
+		full_path = calloc(strlen(dir_path) + strlen(entry->d_name) + 2, sizeof(char));
+    strcpy(full_path, dir_path);
+    strcat(full_path, "\\");
+    strcat(full_path, entry->d_name);
+		
+		// stat for this entry
+		stat(full_path, &stat_entry);
+		
+		// go to next entry if directory
+		if (S_ISDIR(stat_entry.st_mode) != 0)
+		{
+			continue;
+		}
+		
+		// go to next entry if entry does not contain the string to old_id
+		if(memcmp(entry->d_name, old_id, strlen(old_id)) != 0)
+		{
+			continue;
+		}
+		
+		// copy entry
+		char *new_path = (char *) calloc(strlen(full_path) + 1, sizeof(char));
+		strcpy(new_path, full_path);
+		memcpy(strstr(strstr(new_path, entry->d_name), old_id), new_id, strlen(old_id));
+	  copy_binary(full_path, new_path);
+		printf("Copied %s to %s\n", entry->d_name, new_path + strlen(dir_path) + 1);
+		// hex edit entry
+		char *find = (char *) calloc(strlen("\\Model\\chr\\cxxxx\\tex\\") + 1, sizeof(char));
+		sprintf(find, "\\Model\\chr\\%s\\tex\\", old_id);
+		char *replace = (char *) calloc(strlen("\\Model\\chr\\cxxxx\\tex\\") + 1, sizeof(char));
+		sprintf(replace, "\\Model\\chr\\%s\\tex\\", new_id);
+		replace_1_byte_binary(new_path, find, replace);
+		
+		char *xml_path = (char *) calloc(strlen(dir_path) + strlen("\\_yabber-bnd4.xml") + 1, sizeof(char));
+		sprintf(xml_path, "%s\\_yabber-bnd4.xml", dir_path);
+		add_xml_entry(xml_path, new_path + strlen(dir_path) + 1);
+	}
+	closedir (dir);
+}
+
 void rn_unpacked_files(const char *bnd_type, const char *old_id, const char *new_id)
 {
 	// rename all files with the old id in directory
@@ -760,10 +863,35 @@ void unpack_bnd(const char *bnd_type, const char *id, const char *yabber_path)
 	remove(path);
 }
 
+void unpack_mtd(const char *bnd_name, const char *yabber_path)
+{
+	char *path = calloc(strlen(".mtdbnd.dcx") + 20, sizeof(char));
+	sprintf(path, "%s.mtdbnd.dcx", bnd_name);
+	char cwd[PATH_MAX];
+	getcwd(cwd, sizeof(cwd));
+	char *command = calloc(strlen(yabber_path) + strlen(cwd) + strlen(path) + 10, sizeof(char));
+	sprintf(command, "\"%s\" %s\\%s", yabber_path, cwd, path);
+	system(command);
+	remove(path);
+}
+
 void repack_bnd(const char *bnd_type, const char *id, const char *yabber_path)
 {
 	char *path = calloc(strlen("cxxxx-xxxbnd-dcx") + 1, sizeof(char));
 	sprintf(path, "c%s-%sbnd-dcx", id, bnd_type);
+	char cwd[PATH_MAX];
+	getcwd(cwd, sizeof(cwd));
+	char *command = calloc(strlen(yabber_path) + strlen(cwd) + strlen(path) + 10, sizeof(char));
+	sprintf(command, "\"%s\" %s\\%s", yabber_path, cwd, path);
+	system(command);
+	sprintf(command, "rmdir /s /q \"%s\\%s\"", cwd, path);
+	system(command);
+}
+
+void repack_mtd(const char *bnd_name, const char *yabber_path)
+{
+	char *path = calloc(strlen("-mtdbnd-dcx") + 20, sizeof(char));
+	sprintf(path, "%s-mtdbnd-dcx", bnd_name);
 	char cwd[PATH_MAX];
 	getcwd(cwd, sizeof(cwd));
 	char *command = calloc(strlen(yabber_path) + strlen(cwd) + strlen(path) + 10, sizeof(char));
@@ -831,6 +959,49 @@ void edit_sekiro_fev(const char *old_id, const char *new_id)
 	replace = (char *) calloc(strlen("bank/cxxxx") + 1, sizeof(char));
 	sprintf(replace, "bank/c%s", new_id);
 	replace_1_byte_binary(path, find, replace);
+}
+
+void add_xml_entry(const char *xml_path, const char *path)
+{
+	char template[] = "   <file>\n      <flags>0x40</flags>\n      <id>%d</id>\n      <root />\n      <path>%s</path>\n    </file>\n  ";
+	FILE *fp = fopen(xml_path, "r");
+	if(fp == NULL)
+	{	
+		fprintf(stderr, "\n%s\n", "Could not find file.");
+		exit(-1);
+	}
+	// get id
+	char line[1000];
+	char *pos;
+	
+	int id, index;
+	
+	id = 0;
+	
+	while(fgets(line, 1000, fp) != NULL)
+  {
+		index = 0;
+		while((pos = strstr(line + index, "</file>")) != NULL)
+    {
+			index = (pos - line) + 1;
+			id++;
+		}
+	}
+	fclose(fp);
+	fp = fopen(xml_path, "r+");
+	while(strstr(line, "</files>") == NULL && !feof(fp))
+	{
+		fgets(line, 1000, fp);
+		if(strstr(line, path) != NULL)
+		{
+			fclose(fp);
+			return;
+		}
+  }
+	fseek(fp, -1 * strlen(line), SEEK_CUR);
+	fprintf(fp, template, id, path);
+	fprintf(fp, "</files>\n</bnd4>");
+	fclose(fp);
 }
 
 void question(void)
